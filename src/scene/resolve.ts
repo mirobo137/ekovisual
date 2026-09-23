@@ -31,6 +31,11 @@ export function resolveLayers(config: VisualConfig, custom: DynamicLayer[]): Lay
     if (layer.kind === 'frame') {
       return {
         ...layer,
+        bars: config.spectrumStyle === 'template' ? layer.bars : config.spectrumStyle,
+        spectrumCount: config.spectrumCount,
+        spectrumHeight: config.spectrumHeight,
+        spectrumWidth: config.spectrumWidth,
+        spectrumY: config.spectrumY,
         shape: template.slots.includes('frameShape') ? config.frameShape : layer.shape,
         center: template.slots.includes('center') ? config.centerMode : layer.center,
       };

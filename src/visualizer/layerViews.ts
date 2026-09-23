@@ -14,6 +14,7 @@ export interface ImageBounds {
 }
 
 export interface ViewContext {
+  spectrum?: number[];
   width: number;
   height: number;
   time: number;
@@ -379,19 +380,19 @@ class FrameView implements LayerView {
         .stroke({ color: ctx.accent, alpha: 0.32 + ctx.bass * 0.18, width: Math.max(3, shortSide * 0.004) });
     }
 
-    if (def.bars === 'radial') this.drawRadial(def.shape, ctx, cx, cy, hx, hy, radius, shortSide);
-    else if (def.bars === 'linear') this.drawLinear(ctx);
+    if (def.bars === 'radial') this.drawRadial(def, ctx, cx, cy, hx, hy, radius, shortSide);
+    else if (def.bars !== 'none') this.drawLinear(def, ctx);
     return 0;
   }
 
-  private drawRadial(shape: FrameShape, ctx: ViewContext, cx: number, cy: number, hx: number, hy: number, radius: number, shortSide: number) {
-    const count = 72;
+  private drawRadial(def: FrameLayerDef, ctx: ViewContext, cx: number, cy: number, hx: number, hy: number, radius: number, shortSide: number) {
+    const shape = def.shape;
+    const count = def.spectrumCount ?? 48;
     const lineWidth = clamp(shortSide * 0.005, 3, 8);
     const pad = 8;
     for (let index = 0; index < count; index += 1) {
-      const band = index % 3 === 0 ? ctx.bass : index % 3 === 1 ? ctx.mids : ctx.highs;
-      const variation = 0.72 + Math.abs(Math.sin(index * 0.71 + ctx.time * 1.8)) * 0.28;
-      const length = shortSide * (0.018 + clamp(band, 0, 1.5) * 0.048) * variation;
+      const band = this.energy(ctx, index, count);
+      const length = shortSide * (0.004 + clamp(band, 0, 1.5) * 0.12 * (def.spectrumHeight ?? 1));
       let x: number;
       let y: number;
       let nx: number;
@@ -414,19 +415,36 @@ class FrameView implements LayerView {
     }
   }
 
-  private drawLinear(ctx: ViewContext) {
-    const count = 48;
-    const maxHeight = Math.min(ctx.height * 0.15, ctx.width * 0.14);
-    const baseline = ctx.height * (ctx.height > ctx.width ? 0.7 : 0.68);
-    const totalWidth = ctx.width * 0.74;
+  private energy(ctx: ViewContext, index: number, count: number) {
+    if (ctx.spectrum?.length) {
+      const position = index / Math.max(1, count - 1) * (ctx.spectrum.length - 1);
+      const low = Math.floor(position);
+      const high = Math.min(low + 1, ctx.spectrum.length - 1);
+      return ctx.spectrum[low]! + (ctx.spectrum[high]! - ctx.spectrum[low]!) * (position - low);
+    }
+    return index < count * 0.3 ? ctx.bass : index < count * 0.72 ? ctx.mids : ctx.highs;
+  }
+
+  private drawLinear(def: FrameLayerDef, ctx: ViewContext) {
+    const count = def.spectrumCount ?? 48;
+    const maxHeight = Math.min(ctx.height * 0.15, ctx.width * 0.14) * (def.spectrumHeight ?? 1);
+    const baseline = ctx.height * (def.spectrumY ?? 0.68);
+    const totalWidth = ctx.width * (def.spectrumWidth ?? 0.74);
     const gap = totalWidth / count;
     for (let index = 0; index < count; index += 1) {
-      const wave = 0.17 + Math.abs(Math.sin(index * 0.43 + ctx.time * 1.7)) * 0.28;
-      const band = index < count * 0.3 ? ctx.bass : index < count * 0.72 ? ctx.mids : ctx.highs;
-      const height = maxHeight * clamp(wave + band * 0.62, 0.08, 1);
-      this.bars.roundRect(ctx.width / 2 - totalWidth / 2 + index * gap, baseline - height / 2, Math.max(3, gap * 0.43), height, 8)
+      const band = this.energy(ctx, index, count);
+      const height = Math.max(2, maxHeight * clamp(band, 0, 1.5));
+      const x = ctx.width / 2 - totalWidth / 2 + (index + 0.5) * gap;
+      if (def.bars === 'wave') {
+        if (index === 0) this.bars.moveTo(x, baseline - height);
+        else this.bars.lineTo(x, baseline - height);
+        continue;
+      }
+      const mirror = def.bars === 'mirror';
+      this.bars.roundRect(x - gap * 0.22, baseline - height, Math.max(2, gap * 0.44), height * (mirror ? 2 : 1), Math.min(4, height / 2))
         .fill({ color: ctx.accent, alpha: 0.35 + band * 0.55 });
     }
+    if (def.bars === 'wave') this.bars.stroke({ color: ctx.accent, width: 4, cap: 'round', join: 'round' });
   }
 
   destroy() {

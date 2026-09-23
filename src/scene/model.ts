@@ -6,7 +6,7 @@ export type EmitterStyle = 'smoke' | 'sparks' | 'stars' | 'rain';
 export type EmitterOrigin = 'body' | 'base' | 'edge';
 export type TextSource = 'title' | 'artist' | 'link';
 export type TextPlacement = 'auto' | 'top-left' | 'bottom-center';
-export type BarLayout = 'radial' | 'linear' | 'none';
+export type BarLayout = 'radial' | 'linear' | 'mirror' | 'wave' | 'none';
 
 export interface Placement {
   x: number;
@@ -47,6 +47,10 @@ export interface EmitterLayerDef {
 }
 
 export interface FrameLayerDef {
+  spectrumCount?: number;
+  spectrumHeight?: number;
+  spectrumWidth?: number;
+  spectrumY?: number;
   id: string;
   kind: 'frame';
   shape: FrameShape;

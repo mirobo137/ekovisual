@@ -111,6 +111,7 @@ export class VisualizerScene {
       bass: clamp(bands.bass * this.config.sensitivity, 0, 1.6),
       mids: clamp(bands.mids * this.config.sensitivity, 0, 1.6),
       highs: clamp(bands.highs * this.config.sensitivity, 0, 1.6),
+      spectrum: bands.spectrum?.map((value) => clamp(value * this.config.sensitivity, 0, 1.6)),
       accent: this.config.accent,
       title: this.config.title || ' ',
       artist: this.config.artist || ' ',

@@ -34,6 +34,7 @@ test('local images, portrait preview, playback and MP4 export', async ({ page })
   for(let i=0;i<48000;i++) wav.writeInt16LE(Math.round(Math.sin(i/48000*Math.PI*880)*8000),44+i*2);
   await inputs.nth(0).setInputFiles({ name: 'test.wav', mimeType: 'audio/wav', buffer: wav });
   await expect(page.getByRole('button', {name: /Exportar MP4/})).toBeEnabled();
+  await page.getByRole('button', {name: 'Espejo', exact: true}).click();
   await page.getByRole('button',{name:'Reproducir',exact:true}).click();
   await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0);
   await canvas.screenshot({ path: 'test-results/preview.png' });
@@ -52,6 +53,45 @@ test('local images, portrait preview, playback and MP4 export', async ({ page })
     return {width:video.videoWidth,height:video.videoHeight,duration:video.duration};
   },bytes.toString('base64'));
   expect(metadata.width).toBe(1080); expect(metadata.height).toBe(1920); expect(metadata.duration).toBeCloseTo(1,1);
+  expect(errors).toEqual([]);
+});
+
+test('spectrum styles keep assets and frequency analysis distinguishes notes from silence', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await expect(page.locator('canvas')).toBeVisible();
+  const snapshots = new Set<string>();
+  for (const style of ['Barras', 'Espejo', 'Anillo', 'Línea espectral', 'Sin barras']) {
+    await page.getByRole('button', { name: style, exact: true }).click();
+    await expect(page.getByRole('button', { name: style, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    if (style !== 'Sin barras') {
+      await page.getByRole('slider', {name: 'Cantidad de barras'}).fill('96');
+      await page.getByRole('slider', {name: 'Altura del espectro'}).fill('1.8');
+    }
+    snapshots.add(await page.locator('canvas').evaluate((canvas: HTMLCanvasElement) => new Promise<string>(resolve => requestAnimationFrame(() => resolve(canvas.toDataURL())))));
+  }
+  expect(snapshots.size).toBeGreaterThanOrEqual(4);
+  const levels = await page.evaluate(async () => {
+    const modulePath = '/src/audio/analysis.ts';
+    const { analyseAudioBuffer } = await import(modulePath);
+    const context = new AudioContext({sampleRate:48000});
+    try {
+      const results = [];
+      for (const hz of [0, 220, 4000]) {
+        const buffer = context.createBuffer(1, 4800, 48000);
+        const samples = buffer.getChannelData(0);
+        for(let i=0;i<samples.length;i++) samples[i]=0.5*Math.sin(2*Math.PI*hz*i/48000);
+        const features = await analyseAudioBuffer(buffer,30);
+        const spectrum: number[] = features[1].spectrum;
+        results.push({ peak: Math.max(...spectrum), index: spectrum.indexOf(Math.max(...spectrum)) });
+      }
+      return results;
+    } finally { await context.close(); }
+  });
+  expect(levels[0].peak).toBe(0);
+  expect(levels[1].peak).toBeGreaterThan(0.5);
+  expect(levels[2].index).toBeGreaterThan(levels[1].index);
   expect(errors).toEqual([]);
 });
 

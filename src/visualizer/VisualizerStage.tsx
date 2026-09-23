@@ -121,7 +121,7 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
         let bands: AudioBands = { bass: 0, mids: 0, highs: 0 };
         if (analyserRef.current && frequencyDataRef.current) {
           analyserRef.current.getByteFrequencyData(frequencyDataRef.current);
-          bands = analyseLiveFrequencies(frequencyDataRef.current);
+          bands = analyseLiveFrequencies(frequencyDataRef.current, analyserRef.current.context.sampleRate);
         }
         scene.renderAt(audioElementRef.current?.hasAttribute('src') ? audioElementRef.current.currentTime : performance.now() / 1000, bands);
         app.renderer.render({ container: app.stage, clear: true });

@@ -5,6 +5,7 @@ export type BackgroundMotion = 'pan' | 'zoom' | 'both';
 export type FrameShape = 'circle' | 'rect' | 'rounded' | 'heart';
 export type CenterMode = 'cover' | 'lyrics' | 'artist' | 'title' | 'none';
 export type AudioBand = 'bass' | 'mids' | 'highs';
+export type SpectrumStyle = 'template' | 'linear' | 'mirror' | 'radial' | 'wave' | 'none';
 
 export interface LyricLine {
   time: number;
@@ -12,6 +13,7 @@ export interface LyricLine {
 }
 
 export interface AudioBands {
+  spectrum?: number[];
   bass: number;
   mids: number;
   highs: number;
@@ -30,6 +32,11 @@ export interface DynamicLayer {
 }
 
 export interface VisualConfig {
+  spectrumStyle: SpectrumStyle;
+  spectrumCount: number;
+  spectrumHeight: number;
+  spectrumWidth: number;
+  spectrumY: number;
   ratio: AspectRatio;
   template: TemplateId;
   title: string;
@@ -54,6 +61,11 @@ export const RATIO_SIZE: Record<AspectRatio, { width: number; height: number; la
 };
 
 export const DEFAULT_CONFIG: VisualConfig = {
+  spectrumStyle: 'template',
+  spectrumCount: 48,
+  spectrumHeight: 1,
+  spectrumWidth: 0.74,
+  spectrumY: 0.68,
   ratio: 'portrait',
   template: 'retrato',
   title: 'Tu canción',

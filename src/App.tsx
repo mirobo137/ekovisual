@@ -323,6 +323,22 @@ export default function App() {
           </section>
 
           <section className="editor-section assets-section">
+            <div className="section-title"><span className="section-number">♫</span><h2>Estilo del espectro</h2></div>
+            <p className="section-hint">Combina cualquier estilo con tus fondos e imágenes. Las barras siguen las frecuencias de tu canción.</p>
+            <div className="choice-grid cols-3">
+              {([['template', 'De la plantilla'], ['linear', 'Barras'], ['mirror', 'Espejo'], ['radial', 'Anillo'], ['wave', 'Línea espectral'], ['none', 'Sin barras']] as const).map(([style, label]) => <button key={style} aria-pressed={config.spectrumStyle === style} className={config.spectrumStyle === style ? 'selected' : ''} onClick={() => patchConfig({ spectrumStyle: style })}>{label}</button>)}
+            </div>
+            {config.spectrumStyle !== 'none' && <>
+              <label className="range-field"><span>Cantidad de barras <b>{config.spectrumCount}</b></span><input type="range" min="16" max="96" step="8" value={config.spectrumCount} onChange={(e) => patchConfig({ spectrumCount: Number(e.target.value) })} /></label>
+              <label className="range-field"><span>Altura del espectro <b>{config.spectrumHeight.toFixed(1)}×</b></span><input type="range" min="0.2" max="2" step="0.1" value={config.spectrumHeight} onChange={(e) => patchConfig({ spectrumHeight: Number(e.target.value) })} /></label>
+              {(['linear', 'mirror', 'wave'].includes(config.spectrumStyle) || (config.spectrumStyle === 'template' && template.layers.some((layer) => layer.kind === 'frame' && layer.bars === 'linear'))) && <>
+                <label className="range-field"><span>Ancho del espectro <b>{Math.round(config.spectrumWidth * 100)}%</b></span><input type="range" min="0.2" max="0.95" step="0.01" value={config.spectrumWidth} onChange={(e) => patchConfig({ spectrumWidth: Number(e.target.value) })} /></label>
+                <label className="range-field"><span>Posición vertical del espectro <b>{Math.round(config.spectrumY * 100)}%</b></span><input type="range" min="0.2" max="0.8" step="0.01" value={config.spectrumY} onChange={(e) => patchConfig({ spectrumY: Number(e.target.value) })} /></label>
+              </>}
+            </>}
+          </section>
+
+          <section className="editor-section assets-section">
             <div className="section-title"><span className="section-number">04</span><h2>Recursos de la plantilla</h2></div>
             <p className="section-hint">{template.detail}. Solo aparecen los recursos que esta plantilla usa.</p>
             <div className="asset-buttons">

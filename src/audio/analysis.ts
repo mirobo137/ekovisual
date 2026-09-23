@@ -2,7 +2,21 @@ import type { AudioBands } from '../types';
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
-export function analyseLiveFrequencies(data: Uint8Array): AudioBands {
+/** Logarithmic frequency buckets: low notes get as much space as high notes. */
+function spectrumBuckets(binCount: number, sampleRate: number, magnitude: (bin: number) => number) {
+  const maxHz = Math.min(16000, sampleRate / 2);
+  return Array.from({ length: 48 }, (_, index) => {
+    const low = 35 * (maxHz / 35) ** (index / 48);
+    const high = 35 * (maxHz / 35) ** ((index + 1) / 48);
+    const from = Math.max(1, Math.floor(low / (sampleRate / (binCount * 2))));
+    const to = Math.min(binCount, Math.max(from + 1, Math.ceil(high / (sampleRate / (binCount * 2)))));
+    let peak = 0;
+    for (let bin = from; bin < to; bin += 1) peak = Math.max(peak, magnitude(bin));
+    return clamp01(peak);
+  });
+}
+
+export function analyseLiveFrequencies(data: Uint8Array, sampleRate = 48000): AudioBands {
   const average = (from: number, to: number) => {
     let sum = 0;
     const end = Math.min(to, data.length);
@@ -11,6 +25,7 @@ export function analyseLiveFrequencies(data: Uint8Array): AudioBands {
   };
 
   return {
+    spectrum: spectrumBuckets(data.length, sampleRate, (bin) => (data[bin] ?? 0) / 255),
     bass: average(2, 22),
     mids: average(22, 160),
     highs: average(160, 620),
@@ -100,6 +115,11 @@ export async function analyseAudioBuffer(
     }
     fft(real, imag);
     features[frame] = {
+      spectrum: spectrumBuckets(size / 2, buffer.sampleRate, (bin) => {
+        const magnitude = Math.hypot(real[bin]!, imag[bin]!) / size;
+        const decibels = 20 * Math.log10(Math.max(1e-10, magnitude));
+        return (decibels + 100) / 70;
+      }),
       bass: scaledBandEnergy(real, imag, buffer.sampleRate, 35, 250),
       mids: scaledBandEnergy(real, imag, buffer.sampleRate, 250, 4000),
       highs: scaledBandEnergy(real, imag, buffer.sampleRate, 4000, 16000),
