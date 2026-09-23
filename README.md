@@ -11,6 +11,15 @@ npm run dev
 
 Abre la dirección local que muestre Vite. No abras `index.html` directamente con `file://`.
 
+## Comprobar el editor
+
+```bash
+npm test
+npm run build
+```
+
+Las pruebas usan Microsoft Edge instalado y arrancan el servidor local si es necesario. Comprueban píxeles de imágenes importadas (PNG y SVG), proporciones de la vista previa, reproducción de audio y un MP4 de un segundo con pistas H.264/AAC. Los resultados quedan en `test-results/` y no se incluyen en Git.
+
 ## Publicar en GitHub Pages
 
 El workflow de `.github/workflows/deploy.yml` compila y publica `dist` en cada push a `main`. En GitHub, abre **Settings → Pages** y selecciona **GitHub Actions** como fuente.

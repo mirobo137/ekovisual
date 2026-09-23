@@ -1,4 +1,5 @@
-import { Assets, Container, Graphics, Texture } from 'pixi.js';
+import { loadImageTexture } from '../image/loadTexture';
+import { Container, Graphics, Texture } from 'pixi.js';
 import type { AudioBands, DynamicLayer, LyricLine, VisualConfig } from '../types';
 import type { LayerDef, TextLayerDef } from '../scene/model';
 import { resolveLayers } from '../scene/resolve';
@@ -67,18 +68,26 @@ export class VisualizerScene {
   async setDynamicLayers(layers: DynamicLayer[]) {
     const generation = ++this.generation;
     const loaded = new Map<string, Texture>();
-    await Promise.all(layers.map(async (layer) => {
-      const texture = await Assets.load<Texture>(layer.url).catch(() => undefined);
-      if (texture) loaded.set(layer.id, texture);
+    const created: Texture[] = [];
+    const results = await Promise.allSettled(layers.map(async (layer) => {
+      let texture = this.customUrls.get(layer.id) === layer.url ? this.customTextures.get(layer.id) : undefined;
+      if (!texture) {
+        texture = await loadImageTexture(layer.url);
+        created.push(texture);
+      }
+      loaded.set(layer.id, texture);
     }));
-    if (generation !== this.generation) return;
-    for (const [id, url] of this.customUrls) {
-      const stillUsed = layers.some((layer) => layer.id === id && layer.url === url);
-      if (!stillUsed) void Assets.unload(url).catch(() => undefined);
+    if (generation !== this.generation) {
+      created.forEach((texture) => texture.destroy(true));
+      return;
+    }
+    for (const [id, texture] of this.customTextures) {
+      if (loaded.get(id) !== texture) texture.destroy(true);
     }
     this.customUrls = new Map(layers.map((layer) => [layer.id, layer.url]));
     this.customTextures = loaded;
-    this.customLayers = layers;
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   }
 
   resize(width: number, height: number) {
@@ -135,8 +144,8 @@ export class VisualizerScene {
     this.tokens.figure += 1;
     this.tokens.background += 1;
     if (this.smoke !== Texture.EMPTY) this.smoke.destroy(true);
-    for (const url of [this.urls.cover, this.urls.figure, this.urls.background, ...this.customUrls.values()]) {
-      if (url) void Assets.unload(url).catch(() => undefined);
+    for (const texture of [...Object.values(this.textures), ...this.customTextures.values()]) {
+      texture?.destroy(true);
     }
     this.root.destroy({ children: true });
   }
@@ -146,23 +155,26 @@ export class VisualizerScene {
     if (next === this.urls[slot] && (next === '' || this.textures[slot])) return;
     const token = ++this.tokens[slot];
     if (!next) {
-      const previous = this.urls[slot];
+      const previous = this.textures[slot];
       this.urls[slot] = '';
       this.textures[slot] = undefined;
       if (slot === 'figure') this.silhouette = undefined;
-      if (previous) await Assets.unload(previous).catch(() => undefined);
+      previous?.destroy(true);
       return;
     }
     const [texture, silhouette] = await Promise.all([
-      Assets.load<Texture>(next).catch(() => undefined),
+      loadImageTexture(next),
       slot === 'figure' ? sampleSilhouette(next) : Promise.resolve(undefined),
     ]);
-    if (token !== this.tokens[slot]) return;
-    const previous = this.urls[slot];
+    if (token !== this.tokens[slot]) {
+      texture.destroy(true);
+      return;
+    }
+    const previous = this.textures[slot];
     this.urls[slot] = next;
     this.textures[slot] = texture;
     if (slot === 'figure') this.silhouette = silhouette;
-    if (previous && previous !== next) await Assets.unload(previous).catch(() => undefined);
+    previous?.destroy(true);
   }
 
   private sync() {

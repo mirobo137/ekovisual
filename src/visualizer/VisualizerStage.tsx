@@ -6,6 +6,7 @@ import { RATIO_SIZE } from '../types';
 import { VisualizerScene } from './VisualizerScene';
 
 export interface VisualizerStageHandle {
+  ready: () => Promise<void>;
   canvas: () => HTMLCanvasElement | null;
   renderAt: (time: number, bands: AudioBands) => void;
   pause: () => void;
@@ -22,12 +23,22 @@ interface Props {
   audioElement: HTMLAudioElement | null;
   dynamicLayers: DynamicLayer[];
   onReady?: () => void;
+  onError?: (message: string) => void;
 }
 
+// A media element can be attached to only one source node, including StrictMode remounts.
+const audioGraphs = new WeakMap<HTMLAudioElement, { context: AudioContext; analyser: AnalyserNode }>();
+
 const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function VisualizerStage(
-  { config, coverUrl, avatarUrl, backgroundUrl, lyrics, audioElement, dynamicLayers, onReady },
+  { config, coverUrl, avatarUrl, backgroundUrl, lyrics, audioElement, dynamicLayers, onReady, onError },
   forwardedRef,
 ) {
+  const pendingRef = useRef(new Set<Promise<unknown>>());
+  const track = (task: Promise<unknown>) => {
+    pendingRef.current.add(task);
+    void task.catch((error: unknown) => onError?.(error instanceof Error ? error.message : 'No se pudo cargar la escena.'))
+      .finally(() => pendingRef.current.delete(task));
+  };
   const mountRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<VisualizerScene | null>(null);
@@ -44,6 +55,9 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
   useEffect(() => { audioElementRef.current = audioElement; }, [audioElement]);
 
   useImperativeHandle(forwardedRef, () => ({
+    ready: async () => {
+      while (pendingRef.current.size) await Promise.all([...pendingRef.current]);
+    },
     canvas: () => appRef.current?.canvas ?? null,
     renderAt: (time, bands) => {
       const app = appRef.current;
@@ -93,10 +107,11 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
       appRef.current = app;
       const scene = new VisualizerScene(configRef.current);
       sceneRef.current = scene;
+      scene.resize(dimensions.width, dimensions.height);
       scene.setLayerSettings(assetsRef.current.dynamicLayers);
-      void scene.setAssets({ cover: assetsRef.current.coverUrl, avatar: assetsRef.current.avatarUrl, background: assetsRef.current.backgroundUrl });
+      track(scene.setAssets({ cover: assetsRef.current.coverUrl, avatar: assetsRef.current.avatarUrl, background: assetsRef.current.backgroundUrl }));
       scene.setLyrics(assetsRef.current.lyrics);
-      void scene.setDynamicLayers(assetsRef.current.dynamicLayers);
+      track(scene.setDynamicLayers(assetsRef.current.dynamicLayers));
       app.stage.addChild(scene.root);
       mountRef.current?.replaceChildren(app.canvas);
       app.canvas.className = 'visualizer-canvas';
@@ -108,7 +123,7 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
           analyserRef.current.getByteFrequencyData(frequencyDataRef.current);
           bands = analyseLiveFrequencies(frequencyDataRef.current);
         }
-        scene.renderAt(audioElementRef.current?.currentTime ?? performance.now() / 1000, bands);
+        scene.renderAt(audioElementRef.current?.hasAttribute('src') ? audioElementRef.current.currentTime : performance.now() / 1000, bands);
         app.renderer.render({ container: app.stage, clear: true });
       };
       app.ticker.add(tick);
@@ -116,7 +131,9 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
       onReady?.();
     };
 
-    void setup();
+    void setup().catch((error: unknown) => {
+      if (!disposed) onError?.(`No se pudo iniciar la previsualización: ${error instanceof Error ? error.message : 'error del navegador'}`);
+    });
     return () => {
       disposed = true;
       const app = appRef.current;
@@ -126,34 +143,33 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
       appRef.current = null;
       sceneRef.current = null;
     };
-  }, [onReady]);
+  }, [onReady, onError]);
 
   useEffect(() => {
     if (!audioElement) return;
-    let context: AudioContext | undefined;
-    let source: MediaElementAudioSourceNode | undefined;
-    let analyser: AnalyserNode | undefined;
-    const resume = () => { void context?.resume(); };
+    let graph = audioGraphs.get(audioElement);
     try {
-      context = new AudioContext();
-      analyser = context.createAnalyser();
-      analyser.fftSize = 2048;
-      source = context.createMediaElementSource(audioElement);
-      source.connect(analyser);
-      analyser.connect(context.destination);
-      analyserRef.current = analyser;
-      frequencyDataRef.current = new Uint8Array(analyser.frequencyBinCount);
-      audioElement.addEventListener('play', resume);
+      if (!graph) {
+        const context = new AudioContext();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 2048;
+        context.createMediaElementSource(audioElement).connect(analyser);
+        analyser.connect(context.destination);
+        graph = { context, analyser };
+        audioGraphs.set(audioElement, graph);
+      }
+      analyserRef.current = graph.analyser;
+      frequencyDataRef.current = new Uint8Array(graph.analyser.frequencyBinCount);
     } catch (error) {
       console.warn('No se pudo iniciar el análisis de audio en vivo.', error);
     }
+    const resume = () => { void graph?.context.resume().catch(() => undefined); };
+    audioElement.addEventListener('play', resume);
+    if (!audioElement.paused) resume();
     return () => {
       audioElement.removeEventListener('play', resume);
-      source?.disconnect();
-      analyser?.disconnect();
       analyserRef.current = null;
       frequencyDataRef.current = null;
-      void context?.close();
     };
   }, [audioElement]);
 
@@ -168,7 +184,7 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
   }, [config]);
 
   useEffect(() => {
-    void sceneRef.current?.setAssets({ cover: coverUrl, avatar: avatarUrl, background: backgroundUrl });
+    if (sceneRef.current) track(sceneRef.current.setAssets({ cover: coverUrl, avatar: avatarUrl, background: backgroundUrl }));
   }, [coverUrl, avatarUrl, backgroundUrl]);
 
   useEffect(() => {
@@ -180,7 +196,7 @@ const VisualizerStage = forwardRef<VisualizerStageHandle, Props>(function Visual
   }, [dynamicLayers]);
 
   useEffect(() => {
-    void sceneRef.current?.setDynamicLayers(dynamicLayers);
+    if (sceneRef.current) track(sceneRef.current.setDynamicLayers(dynamicLayers));
   }, [dynamicAssetKey]);
 
   return <div className="stage-mount" ref={mountRef} aria-label="Previsualización del visualizador musical" />;

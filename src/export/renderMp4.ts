@@ -42,6 +42,7 @@ function triggerDownload(blob: Blob, name: string) {
 }
 
 export async function exportVideo({ stage, audioBuffer, config, aspect, saveChoice, onProgress }: ExportOptions) {
+  await stage.ready();
   const canvas = stage.canvas();
   if (!canvas) throw new Error('El visualizador todavía se está preparando.');
 
@@ -92,8 +93,8 @@ export async function exportVideo({ stage, audioBuffer, config, aspect, saveChoi
   stage.pause();
   const previousWidth = canvas.width;
   const previousHeight = canvas.height;
-  stage.resize(dimensions.width, dimensions.height);
   try {
+    stage.resize(dimensions.width, dimensions.height);
     await output.start();
     await audioSource.add(audioBuffer);
     audioSource.close();

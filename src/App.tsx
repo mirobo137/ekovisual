@@ -90,7 +90,7 @@ export default function App() {
   const template = getTemplate(config.template);
   const hasSlot = (slot: TemplateSlot) => template.slots.includes(slot);
   const ratio = RATIO_SIZE[config.ratio];
-  const ratioStyle = useMemo(() => ({ aspectRatio: `${ratio.width} / ${ratio.height}` }), [ratio.width, ratio.height]);
+  const ratioStyle = useMemo(() => ({ aspectRatio: `${ratio.width} / ${ratio.height}`, width: `min(100%, ${65 * ratio.width / ratio.height}vh)`, margin: '0 auto' }), [ratio.width, ratio.height]);
 
   const patchConfig = (patch: Partial<VisualConfig>) => setConfig((current) => ({ ...current, ...patch }));
 
@@ -212,8 +212,12 @@ export default function App() {
       return;
     }
     if (audio.paused) {
-      await audio.play();
-      setPlaying(true);
+      try {
+        await audio.play();
+        setPlaying(true);
+      } catch {
+        setError('No se pudo reproducir el audio. Prueba con otro archivo MP3 o WAV.');
+      }
     } else {
       audio.pause();
       setPlaying(false);
@@ -230,6 +234,8 @@ export default function App() {
   const doExport = async () => {
     if (!audioBuffer || !stageRef.current) return;
     setError('');
+    audioRef.current?.pause();
+    setPlaying(false);
     setIsExporting(true);
     setProgress(0);
     try {
@@ -279,7 +285,7 @@ export default function App() {
       </header>
 
       <main className="workspace">
-        <aside className="editor-panel">
+        <fieldset className="editor-panel" disabled={isExporting}>
           <div className="panel-heading"><div><p className="eyebrow">PROYECTO NUEVO</p><h1>Tu próximo visual</h1></div><span className="project-pill">SIN GUARDAR</span></div>
 
           <section className="editor-section first-section">
@@ -375,23 +381,23 @@ export default function App() {
             <label className="field link-field"><span>ENLACE DE SPOTIFY / REDES</span><input value={config.link} onChange={(e) => updateMetadata('link', e.target.value)} placeholder="open.spotify.com/track/…" /></label>
             <small className="field-note">Se muestra en el video. Para que sea pulsable, agrega el enlace en la descripción de tu publicación.</small>
           </section>
-        </aside>
+        </fieldset>
 
         <section className="preview-area">
-          <div className="preview-toolbar"><div><p className="eyebrow">VISTA PREVIA</p><h2>Escena en vivo</h2></div><div className="preview-actions"><span className="canvas-size">{ratio.width} × {ratio.height}</span><button className="quiet-button" onClick={resetProject}>Restablecer</button></div></div>
+          <div className="preview-toolbar"><div><p className="eyebrow">VISTA PREVIA</p><h2>Escena en vivo</h2></div><div className="preview-actions"><span className="canvas-size">{ratio.width} × {ratio.height}</span><button className="quiet-button" disabled={isExporting} onClick={resetProject}>Restablecer</button></div></div>
           <div className="preview-wrap">
             <div className="preview-stage" style={ratioStyle}>
               <Suspense fallback={<div className="stage-loading">Preparando escena visual…</div>}>
-                <VisualizerStage ref={stageRef} config={config} coverUrl={coverUrl} avatarUrl={avatarUrl} backgroundUrl={backgroundUrl} lyrics={lyrics} audioElement={audioRef.current} dynamicLayers={layers} onReady={markStageReady} />
+                <VisualizerStage ref={stageRef} config={config} coverUrl={coverUrl} avatarUrl={avatarUrl} backgroundUrl={backgroundUrl} lyrics={lyrics} audioElement={audioRef.current} dynamicLayers={layers} onReady={markStageReady} onError={setError} />
               </Suspense>
               {!coverUrl && !avatarUrl && !backgroundUrl && <div className="empty-overlay"><div className="empty-orbit"><span>♫</span></div><b>Tu visual aparecerá aquí</b><small>Elige una plantilla y añade fondo, figura o portada</small></div>}
               <div className="preview-label"><span className="status-dot" /> PREVIEW</div>
             </div>
           </div>
           <div className="transport-bar">
-            <button className="play-button" onClick={() => void togglePlayback()} aria-label={playing ? 'Pausar' : 'Reproducir'}>{playing ? 'Ⅱ' : '▶'}</button>
+            <button className="play-button" disabled={isExporting} onClick={() => void togglePlayback()} aria-label={playing ? 'Pausar' : 'Reproducir'}>{playing ? 'Ⅱ' : '▶'}</button>
             <span className="timecode">{formatTime(currentTime)}</span>
-            <input className="timeline" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(currentTime, duration || 1)} onChange={(e) => seek(Number(e.target.value))} />
+            <input className="timeline" disabled={isExporting} type="range" min="0" max={duration || 1} step="0.1" value={Math.min(currentTime, duration || 1)} onChange={(e) => seek(Number(e.target.value))} />
             <span className="timecode muted-time">{formatTime(duration)}</span>
             <audio ref={audioRef} src={audioUrl} onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)} />
           </div>
