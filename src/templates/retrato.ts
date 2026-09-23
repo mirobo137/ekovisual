@@ -12,7 +12,7 @@ export const retrato: TemplateDef = {
   detail: 'Figura, atmósfera y marco',
   glyph: '◉',
   defaultRatio: 'portrait',
-  slots: ['background', 'backgroundMotion', 'figure', 'cutout', 'frameShape', 'center', 'accent', 'sensitivity'],
+  slots: ['background', 'backgroundMotion', 'figure', 'cutout', 'frameShape', 'center', 'customLayers', 'accent', 'sensitivity'],
   layers: [
     {
       id: 'fondo', kind: 'image', slot: 'background', motion: 'both', motionAmount: 0.7,

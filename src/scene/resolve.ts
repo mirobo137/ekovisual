@@ -21,7 +21,13 @@ function customImage(layer: DynamicLayer): ImageLayerDef {
 /** Applies the active template and the slots the user is allowed to change. */
 export function resolveLayers(config: VisualConfig, custom: DynamicLayer[]): LayerDef[] {
   const template = getTemplate(config.template);
-  const layers = template.layers.map((layer) => {
+  const layers: LayerDef[] = template.layers.map((layer): LayerDef => {
+    if (layer.kind === 'image' && layer.slot === 'cover' && config.centerMode !== 'cover') {
+      return {
+        id: layer.id, kind: 'frame', shape: 'rounded', bars: 'none', center: config.centerMode,
+        x: layer.x, y: layer.y, size: layer.size, portrait: layer.portrait, showShape: false,
+      };
+    }
     if (layer.kind === 'image' && layer.slot === 'background' && template.slots.includes('backgroundMotion')) {
       return { ...layer, motion: config.backgroundMotion, motionAmount: config.backgroundMotionAmount };
     }
@@ -37,7 +43,7 @@ export function resolveLayers(config: VisualConfig, custom: DynamicLayer[]): Lay
         spectrumWidth: config.spectrumWidth,
         spectrumY: config.spectrumY,
         shape: template.slots.includes('frameShape') ? config.frameShape : layer.shape,
-        center: template.slots.includes('center') ? config.centerMode : layer.center,
+        center: template.slots.includes('center') && !template.slots.includes('cover') ? config.centerMode : layer.center,
       };
     }
     if (layer.kind === 'emitter') {

@@ -35,6 +35,11 @@ test('local images, portrait preview, playback and MP4 export', async ({ page })
   await inputs.nth(0).setInputFiles({ name: 'test.wav', mimeType: 'audio/wav', buffer: wav });
   await expect(page.getByRole('button', {name: /Exportar MP4/})).toBeEnabled();
   await page.getByRole('button', {name: 'Espejo', exact: true}).click();
+  await page.getByRole('textbox', {name:'Nombre de la plantilla',exact:true}).fill('Exportación guardada');
+  await page.getByRole('button', {name:'Guardar como nueva'}).click();
+  await expect(page.getByRole('status')).toContainText('Plantilla guardada');
+  await page.getByRole('button', {name:'Usar Exportación guardada',exact:true}).click();
+  await expect(page.locator('audio')).toHaveAttribute('src', /^blob:/);
   await page.getByRole('button',{name:'Reproducir',exact:true}).click();
   await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0);
   await canvas.screenshot({ path: 'test-results/preview.png' });

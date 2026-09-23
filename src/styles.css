@@ -60,3 +60,13 @@ button { color: inherit; }
 .cutout-button { width: 100%; margin-top: 8px; }
 .cutout-button:disabled { cursor: wait; opacity: .72; }
 .cutout-note { display: block; margin-top: 6px; color: #777783; font-size: 8px; line-height: 1.45; }
+.template-library { min-width: 0; margin: 0 0 20px; padding: 16px; border: 1px solid #36534a; border-radius: 12px; background: #192321; }
+.template-library-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.template-library button:disabled { opacity: .45; cursor: not-allowed; }
+.saved-template-list { display: grid; gap: 8px; margin: 12px 0; }
+.saved-template { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; border: 1px solid #38413e; border-radius: 8px; padding: 10px; }
+.saved-template.selected { border-color: var(--mint); }
+.saved-template > div { flex: 1; min-width: 100px; overflow-wrap: anywhere; }
+.saved-template strong { display: block; font-size: 12px; }
+.saved-template small { display: block; color: var(--muted); font-size: 10px; margin-top: 4px; }
+.library-message { color: #bde9d9; font-size: 12px; line-height: 1.5; }

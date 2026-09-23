@@ -6,7 +6,7 @@ export const tormenta: TemplateDef = {
   detail: 'Lluvia y relámpagos',
   glyph: 'ϟ',
   defaultRatio: 'landscape',
-  slots: ['background', 'backgroundMotion', 'cover', 'weather', 'accent', 'sensitivity'],
+  slots: ['background', 'backgroundMotion', 'cover', 'center', 'customLayers', 'weather', 'accent', 'sensitivity'],
   layers: [
     {
       id: 'fondo', kind: 'image', slot: 'background', motion: 'both', motionAmount: 0.35,

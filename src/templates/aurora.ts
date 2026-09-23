@@ -6,7 +6,7 @@ export const aurora: TemplateDef = {
   detail: 'Partículas y espectro',
   glyph: '✦',
   defaultRatio: 'landscape',
-  slots: ['background', 'backgroundMotion', 'cover', 'particles', 'customLayers', 'accent', 'sensitivity'],
+  slots: ['background', 'backgroundMotion', 'cover', 'center', 'particles', 'customLayers', 'accent', 'sensitivity'],
   layers: [
     {
       id: 'fondo', kind: 'image', slot: 'background', motion: 'both', motionAmount: 0.45,

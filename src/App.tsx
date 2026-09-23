@@ -6,6 +6,8 @@ import { imageHasTransparency, removeImageBackground } from './image/cutout';
 import type { TemplateSlot } from './scene/model';
 import { TEMPLATE_LIST, applyTemplate, getTemplate } from './templates';
 import type { VisualizerStageHandle } from './visualizer/VisualizerStage';
+import TemplateLibrary from './templates/TemplateLibrary';
+import { restoreTemplate, type SavedTemplate } from './templates/library';
 
 const VisualizerStage = lazy(() => import('./visualizer/VisualizerStage'));
 
@@ -69,6 +71,13 @@ export default function App() {
     return () => URL.revokeObjectURL(avatarUrl);
   }, [avatarUrl]);
   useEffect(() => {
+    let active = true;
+    setFigureOpaque(false);
+    if (avatarUrl) void fetch(avatarUrl).then((response) => response.blob()).then(imageHasTransparency)
+      .then((transparent) => { if (active) setFigureOpaque(!transparent); }, () => { if (active) setFigureOpaque(true); });
+    return () => { active = false; };
+  }, [avatarUrl]);
+  useEffect(() => {
     if (!backgroundUrl) return;
     return () => URL.revokeObjectURL(backgroundUrl);
   }, [backgroundUrl]);
@@ -121,14 +130,9 @@ export default function App() {
     setCoverUrl(URL.createObjectURL(file));
   };
 
-  const onAvatarChange = async (file?: File) => {
+  const onAvatarChange = (file?: File) => {
     if (!file) return;
     setAvatarUrl(URL.createObjectURL(file));
-    try {
-      setFigureOpaque(!(await imageHasTransparency(file)));
-    } catch {
-      setFigureOpaque(true);
-    }
   };
 
   const onLyricsChange = async (file?: File) => {
@@ -179,6 +183,24 @@ export default function App() {
 
   const chooseTemplate = (template: TemplateId) => {
     setConfig((current) => current.template === template ? current : applyTemplate(template, current));
+  };
+
+  const loadSavedTemplate = (saved: SavedTemplate) => {
+    const restored = restoreTemplate(saved);
+    setConfig({ ...DEFAULT_CONFIG, ...restored.config });
+    setCoverUrl(restored.coverUrl);
+    setAvatarUrl(restored.avatarUrl);
+    setBackgroundUrl(restored.backgroundUrl);
+    layersRef.current.forEach((layer) => URL.revokeObjectURL(layer.url));
+    setLayers(restored.layers);
+    setLyrics(restored.lyrics);
+    setLyricsName(restored.lyricsName);
+    setFigureOpaque(false);
+    setError('');
+    // Reset file inputs so the same file can be selected after restoring a template.
+    for (const input of [coverInputRef, avatarInputRef, backgroundInputRef, vectorInputRef, lyricsInputRef]) {
+      if (input.current) input.current.value = '';
+    }
   };
 
   const cutFigure = async () => {
@@ -286,7 +308,9 @@ export default function App() {
 
       <main className="workspace">
         <fieldset className="editor-panel" disabled={isExporting}>
-          <div className="panel-heading"><div><p className="eyebrow">PROYECTO NUEVO</p><h1>Tu próximo visual</h1></div><span className="project-pill">SIN GUARDAR</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">EDITOR DE COMPOSICIONES</p><h1>Tu próximo visual</h1></div><span className="project-pill">EDICIÓN</span></div>
+
+          <TemplateLibrary draft={{ config, coverUrl, avatarUrl, backgroundUrl, layers, lyrics, lyricsName }} onLoad={loadSavedTemplate} disabled={isExporting || cuttingOut || isDecoding} />
 
           <section className="editor-section first-section">
             <div className="section-title"><span className="section-number">01</span><h2>Tu canción</h2></div>
