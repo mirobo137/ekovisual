@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# Local credentials and environment overrides
+.env*
+!.env.example
+
+# Local media and rendered exports
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.mp4
+exports/
+
+# Operating system files
+.DS_Store
+Thumbs.db
