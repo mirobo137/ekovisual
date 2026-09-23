@@ -9,8 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
     "@mediabunny/aac-encoder": "^1.28.0",
     "mediabunny": "^1.28.0",
+    "onnxruntime-web": "^1.21.0",
     "pixi.js": "^8.8.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

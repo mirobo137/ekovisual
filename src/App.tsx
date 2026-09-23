@@ -1,17 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DynamicLayer, LyricLine, MotionStyle, PresetName, VisualConfig } from './types';
+import type { BackgroundMotion, CenterMode, DynamicLayer, FrameShape, LyricLine, MotionStyle, TemplateId, VisualConfig } from './types';
 import { DEFAULT_CONFIG, RATIO_SIZE } from './types';
 import { parseLrc } from './audio/lyrics';
+import { imageHasTransparency, removeImageBackground } from './image/cutout';
+import type { TemplateSlot } from './scene/model';
+import { TEMPLATE_LIST, applyTemplate, getTemplate } from './templates';
 import type { VisualizerStageHandle } from './visualizer/VisualizerStage';
 
 const VisualizerStage = lazy(() => import('./visualizer/VisualizerStage'));
-
-const presetCopy: Record<PresetName, { title: string; detail: string; glyph: string }> = {
-  aurora: { title: 'Aurora', detail: 'Partículas + espectro', glyph: '✦' },
-  heart: { title: 'Latido', detail: 'Corazón reactivo', glyph: '♡' },
-  storm: { title: 'Tormenta', detail: 'Lluvia + relámpagos', glyph: 'ϟ' },
-  vizy: { title: 'Retrato', detail: 'Avatar + anillo reactivo', glyph: '◉' },
-};
 
 function formatTime(value: number) {
   if (!Number.isFinite(value)) return '0:00';
@@ -52,6 +48,9 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [stageReady, setStageReady] = useState(false);
+  const [figureOpaque, setFigureOpaque] = useState(false);
+  const [cuttingOut, setCuttingOut] = useState(false);
+  const [cutoutLabel, setCutoutLabel] = useState('');
   const layersRef = useRef(layers);
   const markStageReady = useCallback(() => setStageReady(true), []);
 
@@ -88,6 +87,8 @@ export default function App() {
     };
   }, [audioUrl]);
 
+  const template = getTemplate(config.template);
+  const hasSlot = (slot: TemplateSlot) => template.slots.includes(slot);
   const ratio = RATIO_SIZE[config.ratio];
   const ratioStyle = useMemo(() => ({ aspectRatio: `${ratio.width} / ${ratio.height}` }), [ratio.width, ratio.height]);
 
@@ -120,9 +121,14 @@ export default function App() {
     setCoverUrl(URL.createObjectURL(file));
   };
 
-  const onAvatarChange = (file?: File) => {
+  const onAvatarChange = async (file?: File) => {
     if (!file) return;
     setAvatarUrl(URL.createObjectURL(file));
+    try {
+      setFigureOpaque(!(await imageHasTransparency(file)));
+    } catch {
+      setFigureOpaque(true);
+    }
   };
 
   const onLyricsChange = async (file?: File) => {
@@ -171,13 +177,26 @@ export default function App() {
     });
   };
 
-  const choosePreset = (preset: PresetName) => {
-    const common = { preset };
-    if (preset === 'aurora') patchConfig({ ...common, showHeart: false, showSpectrum: true, showParticles: true, showWeather: false });
-    if (preset === 'heart') patchConfig({ ...common, showHeart: true, showSpectrum: false, showParticles: true, showWeather: false });
-    if (preset === 'storm') patchConfig({ ...common, showHeart: false, showSpectrum: true, showParticles: false, showWeather: true });
-    if (preset === 'vizy') patchConfig({ ...common, ratio: 'portrait', showHeart: false, showSpectrum: true, radialSpectrum: true, showParticles: false, showWeather: false, showSmoke: true, centerMode: 'cover' });
-    if (preset !== 'vizy') patchConfig({ radialSpectrum: false, showSmoke: false });
+  const chooseTemplate = (template: TemplateId) => {
+    setConfig((current) => current.template === template ? current : applyTemplate(template, current));
+  };
+
+  const cutFigure = async () => {
+    if (!avatarUrl || cuttingOut) return;
+    setCuttingOut(true);
+    setCutoutLabel('Cargando modelo…');
+    setError('');
+    try {
+      const source = await fetch(avatarUrl).then((response) => response.blob());
+      const result = await removeImageBackground(source, setCutoutLabel);
+      setAvatarUrl(URL.createObjectURL(result));
+      setFigureOpaque(false);
+    } catch {
+      setError('No pude quitar el fondo. Prueba con otra imagen o un PNG transparente.');
+    } finally {
+      setCuttingOut(false);
+      setCutoutLabel('');
+    }
   };
 
   const resetProject = () => {
@@ -256,7 +275,7 @@ export default function App() {
           <div><strong>eko<span>visual</span></strong><small>STUDIO · AUDIO REACTIVE</small></div>
         </div>
         <div className="topbar-middle"><span className="status-dot" /> Todo se procesa en tu dispositivo</div>
-        <button className="quiet-button help-button" onClick={() => setError('Importa tu audio y portada; luego elige un preset o combina capas vectoriales, fondo y clima.')}>Cómo empezar <span>↗</span></button>
+        <button className="quiet-button help-button" onClick={() => setError('Elige una plantilla, importa tu canción y completa solo los recursos que esa plantilla muestra.')}>Cómo empezar <span>↗</span></button>
       </header>
 
       <main className="workspace">
@@ -287,57 +306,62 @@ export default function App() {
           </section>
 
           <section className="editor-section">
-            <div className="section-title"><span className="section-number">03</span><h2>Estilo visual</h2></div>
+            <div className="section-title"><span className="section-number">03</span><h2>Plantilla</h2></div>
             <div className="preset-grid">
-              {(Object.keys(presetCopy) as PresetName[]).map((preset) => <button key={preset} onClick={() => choosePreset(preset)} className={`preset-card preset-${preset} ${config.preset === preset ? 'selected' : ''}`}>
-                <span className="preset-art">{presetCopy[preset].glyph}</span><span><strong>{presetCopy[preset].title}</strong><small>{presetCopy[preset].detail}</small></span>
+              {TEMPLATE_LIST.map((item) => <button key={item.id} onClick={() => chooseTemplate(item.id)} className={`preset-card preset-${item.id} ${config.template === item.id ? 'selected' : ''}`}>
+                <span className="preset-art">{item.glyph}</span><span><strong>{item.title}</strong><small>{item.detail}</small></span>
               </button>)}
-              </div>
-            <label className="range-field"><span>Sensibilidad al audio <b>{config.sensitivity.toFixed(1)}×</b></span><input type="range" min="0.3" max="2.4" step="0.1" value={config.sensitivity} onChange={(e) => patchConfig({ sensitivity: Number(e.target.value) })} /></label>
-            <label className="color-field"><span>Color de acento</span><input type="color" value={config.accent} onChange={(e) => patchConfig({ accent: e.target.value })} /></label>
+            </div>
+            {hasSlot('sensitivity') && <label className="range-field"><span>Sensibilidad al audio <b>{config.sensitivity.toFixed(1)}×</b></span><input type="range" min="0.3" max="2.4" step="0.1" value={config.sensitivity} onChange={(e) => patchConfig({ sensitivity: Number(e.target.value) })} /></label>}
+            {hasSlot('accent') && <label className="color-field"><span>Color de acento</span><input type="color" value={config.accent} onChange={(e) => patchConfig({ accent: e.target.value })} /></label>}
           </section>
 
           <section className="editor-section assets-section">
-            <div className="section-title"><span className="section-number">04</span><h2>Capas y recursos</h2></div>
-            <p className="section-hint">Combina portada, fondos e ilustraciones. Las capas vectoriales pueden pulsar, flotar o girar con la canción.</p>
+            <div className="section-title"><span className="section-number">04</span><h2>Recursos de la plantilla</h2></div>
+            <p className="section-hint">{template.detail}. Solo aparecen los recursos que esta plantilla usa.</p>
             <div className="asset-buttons">
-              <button className={`asset-button ${avatarUrl ? 'asset-added' : ''}`} onClick={() => avatarInputRef.current?.click()}><span className="asset-glyph avatar-glyph">♙</span><span><b>{avatarUrl ? 'Avatar listo' : 'Avatar PNG'}</b><small>PNG transparente</small></span><i>{avatarUrl ? '✓' : '+'}</i></button>
-              <button className={`asset-button ${coverUrl ? 'asset-added' : ''}`} onClick={() => coverInputRef.current?.click()}><span className="asset-glyph cover-glyph">▧</span><span><b>{coverUrl ? 'Portada lista' : 'Portada'}</b><small>JPG, PNG, WebP</small></span><i>{coverUrl ? '✓' : '+'}</i></button>
-              <button className={`asset-button ${backgroundUrl ? 'asset-added' : ''}`} onClick={() => backgroundInputRef.current?.click()}><span className="asset-glyph bg-glyph">▨</span><span><b>{backgroundUrl ? 'Fondo listo' : 'Fondo extra'}</b><small>Imagen con movimiento</small></span><i>{backgroundUrl ? '✓' : '+'}</i></button>
-              <button className="asset-button vector-add" onClick={() => vectorInputRef.current?.click()}><span className="asset-glyph vector-glyph">◇</span><span><b>Añadir vector o imagen</b><small>SVG, PNG, WebP · varias capas</small></span><i>+</i></button>
+              {hasSlot('figure') && <button className={`asset-button ${avatarUrl ? 'asset-added' : ''}`} onClick={() => avatarInputRef.current?.click()}><span className="asset-glyph avatar-glyph">♙</span><span><b>{avatarUrl ? 'Figura lista' : 'Figura'}</b><small>PNG, WebP o JPG</small></span><i>{avatarUrl ? '✓' : '+'}</i></button>}
+              {hasSlot('background') && <button className={`asset-button ${backgroundUrl ? 'asset-added' : ''}`} onClick={() => backgroundInputRef.current?.click()}><span className="asset-glyph bg-glyph">▨</span><span><b>{backgroundUrl ? 'Fondo listo' : 'Fondo'}</b><small>Imagen con movimiento</small></span><i>{backgroundUrl ? '✓' : '+'}</i></button>}
+              {(hasSlot('cover') || hasSlot('center')) && <button className={`asset-button ${coverUrl ? 'asset-added' : ''}`} onClick={() => coverInputRef.current?.click()}><span className="asset-glyph cover-glyph">▧</span><span><b>{coverUrl ? 'Portada lista' : 'Portada'}</b><small>JPG, PNG, WebP</small></span><i>{coverUrl ? '✓' : '+'}</i></button>}
+              {hasSlot('customLayers') && <button className="asset-button vector-add" onClick={() => vectorInputRef.current?.click()}><span className="asset-glyph vector-glyph">◇</span><span><b>Añadir vector o imagen</b><small>SVG, PNG, WebP · varias capas</small></span><i>+</i></button>}
             </div>
             <input ref={coverInputRef} className="file-input" type="file" accept="image/*" onChange={(e) => onCoverChange(e.target.files?.[0])} />
-            <input ref={avatarInputRef} className="file-input" type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => onAvatarChange(e.target.files?.[0])} />
+            <input ref={avatarInputRef} className="file-input" type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => void onAvatarChange(e.target.files?.[0])} />
             <input ref={backgroundInputRef} className="file-input" type="file" accept="image/*" onChange={(e) => onBackgroundChange(e.target.files?.[0])} />
             <input ref={vectorInputRef} className="file-input" type="file" accept="image/svg+xml,image/png,image/webp,image/jpeg" multiple onChange={(e) => onVectorChange(e.target.files)} />
-            <div className="center-content-editor">
-              <div className="layer-list-heading"><span>CONTENIDO DEL CÍRCULO</span><span>{lyrics.length ? `${lyrics.length} líneas` : 'opcional'}</span></div>
-              <div className="center-mode-picker">
-                <button className={config.centerMode === 'cover' ? 'selected' : ''} onClick={() => patchConfig({ centerMode: 'cover' })}>Portada</button>
-                <button className={config.centerMode === 'lyrics' ? 'selected' : ''} onClick={() => lyrics.length && patchConfig({ centerMode: 'lyrics' })} disabled={!lyrics.length}>Letra sincronizada</button>
+            {hasSlot('backgroundMotion') && <div className="slot-block">
+              <div className="layer-list-heading"><span>MOVIMIENTO DEL FONDO</span></div>
+              <div className="choice-grid cols-3">
+                {([['pan', 'Paneo'], ['zoom', 'Acercamiento'], ['both', 'Ambos']] as const).map(([motion, label]) => <button key={motion} className={config.backgroundMotion === motion ? 'selected' : ''} onClick={() => patchConfig({ backgroundMotion: motion as BackgroundMotion })}>{label}</button>)}
+              </div>
+              <label className="range-field compact-range"><span>Intensidad <b>{Math.round(config.backgroundMotionAmount * 100)}%</b></span><input type="range" min="0.15" max="1" step="0.05" value={config.backgroundMotionAmount} onChange={(e) => patchConfig({ backgroundMotionAmount: Number(e.target.value) })} /></label>
+            </div>}
+            {hasSlot('figure') && avatarUrl && <div className="avatar-controls">
+              <label className="range-field compact-range"><span>Tamaño de la figura <b>{Math.round(config.avatarScale * 100)}%</b></span><input type="range" min="0.45" max="1.15" step="0.02" value={config.avatarScale} onChange={(e) => patchConfig({ avatarScale: Number(e.target.value) })} /></label>
+              <label className="range-field compact-range"><span>Altura de la figura <b>{Math.round(config.avatarY * 100)}%</b></span><input type="range" min="0.3" max="0.72" step="0.01" value={config.avatarY} onChange={(e) => patchConfig({ avatarY: Number(e.target.value) })} /></label>
+            </div>}
+            {hasSlot('cutout') && avatarUrl && figureOpaque && <div className="slot-block">
+              <button className="asset-button cutout-button" disabled={cuttingOut} onClick={() => void cutFigure()}><span className="asset-glyph">✂</span><span><b>{cuttingOut ? cutoutLabel || 'Quitando fondo…' : 'Quitar fondo'}</b><small>Solo si la imagen no es transparente</small></span><i>{cuttingOut ? '◌' : '↗'}</i></button>
+              <small className="cutout-note">La primera vez descarga un modelo y puede tardar. El recorte se hace en tu dispositivo.</small>
+            </div>}
+            {hasSlot('frameShape') && <div className="slot-block">
+              <div className="layer-list-heading"><span>FORMA DEL MARCO</span></div>
+              <div className="choice-grid cols-3">
+                {([['circle', 'Círculo'], ['rect', 'Rectángulo'], ['rounded', 'Redondeado']] as const).map(([shape, label]) => <button key={shape} className={config.frameShape === shape ? 'selected' : ''} onClick={() => patchConfig({ frameShape: shape as FrameShape })}>{label}</button>)}
+              </div>
+            </div>}
+            {hasSlot('center') && <div className="center-content-editor">
+              <div className="layer-list-heading"><span>CONTENIDO DEL MARCO</span><span>{lyrics.length ? `${lyrics.length} líneas` : 'opcional'}</span></div>
+              <div className="choice-grid cols-4">
+                {([['cover', 'Portada'], ['lyrics', 'Letra'], ['artist', 'Artista'], ['title', 'Título']] as const).map(([mode, label]) => <button key={mode} className={config.centerMode === mode ? 'selected' : ''} disabled={mode === 'lyrics' && !lyrics.length} onClick={() => patchConfig({ centerMode: mode as CenterMode })}>{label}</button>)}
               </div>
               <button className="lyrics-upload" onClick={() => lyricsInputRef.current?.click()}><span>♫</span><b>{lyricsName || 'Cargar letras .LRC'}</b><i>{lyrics.length ? 'Cambiar' : '+'}</i></button>
               <input ref={lyricsInputRef} className="file-input" type="file" accept=".lrc,text/plain" onChange={(e) => void onLyricsChange(e.target.files?.[0])} />
-              <small className="lyrics-note">Las letras con marcas de tiempo se dibujan en el video y siguen el audio al exportar.</small>
-            </div>
-            {avatarUrl && <div className="avatar-controls">
-              <label className="range-field compact-range"><span>Tamaño del avatar <b>{Math.round(config.avatarScale * 100)}%</b></span><input type="range" min="0.45" max="1.1" step="0.02" value={config.avatarScale} onChange={(e) => patchConfig({ avatarScale: Number(e.target.value) })} /></label>
-              <label className="range-field compact-range"><span>Altura del avatar <b>{Math.round(config.avatarY * 100)}%</b></span><input type="range" min="0.35" max="0.75" step="0.01" value={config.avatarY} onChange={(e) => patchConfig({ avatarY: Number(e.target.value) })} /></label>
+              <small className="lyrics-note">Las letras con marcas de tiempo se dibujan dentro del marco y siguen el audio al exportar.</small>
             </div>}
-            <div className="effect-toggles">
-              <Toggle label="Corazón vectorial" enabled={config.showHeart} onChange={(showHeart) => patchConfig({ showHeart })} glyph="♡" />
-              <Toggle label="Espectro reactivo" enabled={config.showSpectrum} onChange={(showSpectrum) => patchConfig({ showSpectrum })} glyph="▥" />
-              <Toggle label="Partículas" enabled={config.showParticles} onChange={(showParticles) => patchConfig({ showParticles })} glyph="✦" />
-              <Toggle label="Lluvia y relámpagos" enabled={config.showWeather} onChange={(showWeather) => patchConfig({ showWeather })} glyph="ϟ" />
-              <Toggle label="Espectro circular" enabled={config.radialSpectrum} onChange={(radialSpectrum) => patchConfig({ radialSpectrum })} glyph="◎" />
-              <Toggle label="Humo ambiental" enabled={config.showSmoke} onChange={(showSmoke) => patchConfig({ showSmoke })} glyph="〰" />
-            </div>
-            <label className="range-field compact-range"><span>Movimiento del fondo <b>{Math.round(config.backgroundMotion * 100)}%</b></span><input type="range" min="0" max="1" step="0.05" value={config.backgroundMotion} onChange={(e) => patchConfig({ backgroundMotion: Number(e.target.value) })} /></label>
-            {backgroundUrl && <label className="range-field compact-range"><span>Opacidad del fondo extra <b>{Math.round(config.backgroundOpacity * 100)}%</b></span><input type="range" min="0.15" max="1" step="0.05" value={config.backgroundOpacity} onChange={(e) => patchConfig({ backgroundOpacity: Number(e.target.value) })} /></label>}
-            <label className="range-field compact-range"><span>Densidad de partículas <b>{Math.round(config.particleAmount * 100)}%</b></span><input type="range" min="0.1" max="1" step="0.05" value={config.particleAmount} onChange={(e) => patchConfig({ particleAmount: Number(e.target.value) })} /></label>
-            {config.showWeather && <label className="range-field compact-range"><span>Intensidad de lluvia <b>{Math.round(config.weatherAmount * 100)}%</b></span><input type="range" min="0.1" max="1" step="0.05" value={config.weatherAmount} onChange={(e) => patchConfig({ weatherAmount: Number(e.target.value) })} /></label>}
-            {config.showSmoke && <label className="range-field compact-range"><span>Densidad del humo <b>{Math.round(config.smokeAmount * 100)}%</b></span><input type="range" min="0.1" max="1" step="0.05" value={config.smokeAmount} onChange={(e) => patchConfig({ smokeAmount: Number(e.target.value) })} /></label>}
-            {layers.length > 0 && <div className="dynamic-layer-list"><div className="layer-list-heading"><span>ILUSTRACIONES VECTORIALES</span><span>{layers.length} capas</span></div>
+            {hasSlot('particles') && <label className="range-field compact-range"><span>Densidad de partículas <b>{Math.round(config.particleAmount * 100)}%</b></span><input type="range" min="0.1" max="1" step="0.05" value={config.particleAmount} onChange={(e) => patchConfig({ particleAmount: Number(e.target.value) })} /></label>}
+            {hasSlot('weather') && <label className="range-field compact-range"><span>Intensidad de lluvia <b>{Math.round(config.weatherAmount * 100)}%</b></span><input type="range" min="0.1" max="1" step="0.05" value={config.weatherAmount} onChange={(e) => patchConfig({ weatherAmount: Number(e.target.value) })} /></label>}
+            {hasSlot('customLayers') && layers.length > 0 && <div className="dynamic-layer-list"><div className="layer-list-heading"><span>ILUSTRACIONES VECTORIALES</span><span>{layers.length} capas</span></div>
               {layers.map((layer) => <div className="dynamic-layer" key={layer.id}>
                 <button className={`layer-visibility ${layer.visible ? 'on' : ''}`} aria-label={layer.visible ? 'Ocultar capa' : 'Mostrar capa'} onClick={() => setLayer(layer.id, { visible: !layer.visible })}>{layer.visible ? '◉' : '○'}</button>
                 <div className="dynamic-layer-main"><b title={layer.name}>{layer.name}</b><div className="layer-controls"><select aria-label={`Animación de ${layer.name}`} value={layer.motion} onChange={(e) => setLayer(layer.id, { motion: e.target.value as MotionStyle })}><option value="pulse">Pulso</option><option value="float">Flotar</option><option value="rotate">Girar</option></select><input aria-label={`Tamaño de ${layer.name}`} title="Tamaño" type="range" min="0.12" max="0.72" step="0.02" value={layer.size} onChange={(e) => setLayer(layer.id, { size: Number(e.target.value) })} /><input aria-label={`Opacidad de ${layer.name}`} title="Opacidad" type="range" min="0.1" max="1" step="0.05" value={layer.opacity} onChange={(e) => setLayer(layer.id, { opacity: Number(e.target.value) })} /></div><div className="layer-position-controls"><label>X<input aria-label={`Posición horizontal de ${layer.name}`} type="range" min="0.05" max="0.95" step="0.02" value={layer.x} onChange={(e) => setLayer(layer.id, { x: Number(e.target.value) })} /></label><label>Y<input aria-label={`Posición vertical de ${layer.name}`} type="range" min="0.05" max="0.95" step="0.02" value={layer.y} onChange={(e) => setLayer(layer.id, { y: Number(e.target.value) })} /></label></div></div>
@@ -360,7 +384,7 @@ export default function App() {
               <Suspense fallback={<div className="stage-loading">Preparando escena visual…</div>}>
                 <VisualizerStage ref={stageRef} config={config} coverUrl={coverUrl} avatarUrl={avatarUrl} backgroundUrl={backgroundUrl} lyrics={lyrics} audioElement={audioRef.current} dynamicLayers={layers} onReady={markStageReady} />
               </Suspense>
-              {!coverUrl && config.centerMode === 'cover' && <div className="empty-overlay"><div className="empty-orbit"><span>♫</span></div><b>Tu portada aparecerá aquí</b><small>Añade música y empieza a combinar capas</small></div>}
+              {!coverUrl && !avatarUrl && !backgroundUrl && <div className="empty-overlay"><div className="empty-orbit"><span>♫</span></div><b>Tu visual aparecerá aquí</b><small>Elige una plantilla y añade fondo, figura o portada</small></div>}
               <div className="preview-label"><span className="status-dot" /> PREVIEW</div>
             </div>
           </div>
@@ -373,7 +397,7 @@ export default function App() {
           </div>
 
           <div className="preview-bottom-grid">
-            <div className="tip-card"><span className="tip-icon">✧</span><div><b>Construye tu identidad visual</b><p>Añade varios SVG para superponer símbolos, formas o ilustraciones propias. Cada capa tiene su propia animación.</p></div></div>
+            <div className="tip-card"><span className="tip-icon">✧</span><div><b>Plantillas, no interruptores</b><p>Cada plantilla combina las mismas capas: imagen, atmósfera, marco y texto. Una idea nueva es otra plantilla, sin reescribir la escena.</p></div></div>
             <div className="export-card"><div className="export-card-top"><div><p className="eyebrow">LISTO PARA PUBLICAR</p><h3>Video completo · {RATIO_SIZE[config.ratio].label}</h3></div><span className="mp4-badge">MP4</span></div>
               {isExporting && <div className="export-progress"><div className="progress-track"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div><span>{progressText}</span></div>}
               <button className="export-button" disabled={!audioBuffer || !stageReady || isDecoding || isExporting} onClick={() => void doExport()}><span>{isExporting ? '◌' : '↓'}</span>{isExporting ? progressText : isDecoding ? 'Preparando audio…' : !stageReady ? 'Preparando visual…' : 'Exportar MP4'}<i>↗</i></button>
@@ -385,8 +409,4 @@ export default function App() {
       </main>
     </div>
   );
-}
-
-function Toggle({ label, enabled, onChange, glyph }: { label: string; enabled: boolean; onChange: (value: boolean) => void; glyph: string }) {
-  return <button className={`effect-toggle ${enabled ? 'enabled' : ''}`} onClick={() => onChange(!enabled)}><span className="effect-glyph">{glyph}</span><span>{label}</span><i className="toggle-switch"><b /></i></button>;
 }

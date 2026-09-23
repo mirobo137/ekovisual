@@ -1,7 +1,10 @@
 export type AspectRatio = 'landscape' | 'portrait' | 'square';
-export type PresetName = 'aurora' | 'heart' | 'storm' | 'vizy';
+export type TemplateId = 'aurora' | 'heart' | 'storm' | 'retrato';
 export type MotionStyle = 'pulse' | 'float' | 'rotate';
-export type CenterMode = 'cover' | 'lyrics';
+export type BackgroundMotion = 'pan' | 'zoom' | 'both';
+export type FrameShape = 'circle' | 'rect' | 'rounded' | 'heart';
+export type CenterMode = 'cover' | 'lyrics' | 'artist' | 'title' | 'none';
+export type AudioBand = 'bass' | 'mids' | 'highs';
 
 export interface LyricLine {
   time: number;
@@ -28,27 +31,20 @@ export interface DynamicLayer {
 
 export interface VisualConfig {
   ratio: AspectRatio;
-  preset: PresetName;
+  template: TemplateId;
   title: string;
   artist: string;
   link: string;
   accent: string;
   sensitivity: number;
-  showCover: boolean;
-  showHeart: boolean;
-  showSpectrum: boolean;
-  showParticles: boolean;
-  showWeather: boolean;
-  backgroundMotion: number;
-  backgroundOpacity: number;
-  particleAmount: number;
-  weatherAmount: number;
-  radialSpectrum: boolean;
-  showSmoke: boolean;
-  smokeAmount: number;
+  backgroundMotion: BackgroundMotion;
+  backgroundMotionAmount: number;
+  frameShape: FrameShape;
   centerMode: CenterMode;
   avatarScale: number;
   avatarY: number;
+  particleAmount: number;
+  weatherAmount: number;
 }
 
 export const RATIO_SIZE: Record<AspectRatio, { width: number; height: number; label: string }> = {
@@ -58,26 +54,19 @@ export const RATIO_SIZE: Record<AspectRatio, { width: number; height: number; la
 };
 
 export const DEFAULT_CONFIG: VisualConfig = {
-  ratio: 'landscape',
-  preset: 'aurora',
+  ratio: 'portrait',
+  template: 'retrato',
   title: 'Tu canción',
   artist: 'Nombre del artista',
   link: '',
   accent: '#91e5d0',
   sensitivity: 1.2,
-  showCover: true,
-  showHeart: false,
-  showSpectrum: true,
-  showParticles: true,
-  showWeather: false,
-  backgroundMotion: 0.45,
-  backgroundOpacity: 0.78,
+  backgroundMotion: 'both',
+  backgroundMotionAmount: 0.7,
+  frameShape: 'circle',
+  centerMode: 'cover',
+  avatarScale: 0.92,
+  avatarY: 0.46,
   particleAmount: 0.65,
   weatherAmount: 0.55,
-  radialSpectrum: false,
-  showSmoke: false,
-  smokeAmount: 0.55,
-  centerMode: 'cover',
-  avatarScale: 0.84,
-  avatarY: 0.57,
 };
